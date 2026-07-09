@@ -1,198 +1,187 @@
 # -*- coding: utf-8 -*-
 """
-Geração do PDF do Mapa Numerológico — visual profissional (letterhead),
-compactado para caber em UMA página A4.
+Geração do PDF do Mapa Numerológico — versão Android, usando fpdf2.
 
-Depende apenas do ReportLab (não importa GUI).
+Por que fpdf2 e não reportlab aqui: o python-for-android tem uma "receita"
+própria para reportlab que baixa uma versão antiga travada (ignorando
+qualquer versão pedida no buildozer.spec) e essa versão antiga não compila
+no Android (usa uma API interna do CPython que mudou a partir do Python
+3.11). O fpdf2 é 100% Python puro — sem nenhum código C — então não sofre
+desse problema.
+
+Mesma assinatura de função que a versão desktop (`gerar_pdf(nome, data, r,
+pasta_destino) -> caminho`), para que main.py não precise de nenhuma
+alteração.
 """
 import os
 from datetime import datetime
 
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import mm
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table as RLTable, TableStyle,
-    KeepTogether, PageBreak,
-)
+from fpdf import FPDF
 
 from core import LIMIAR_EXCESSO
 from interpretations import analise_completa
 
 # --------------------------------------------------------------- Paleta --
-NAVY = colors.HexColor("#1E2A44")
-NAVY_LIGHT = colors.HexColor("#2E3E5C")
-GOLD = colors.HexColor("#B8912F")
-GOLD_SOFT = colors.HexColor("#F3E9D2")
-INK = colors.HexColor("#232323")
-GRAY_TEXT = colors.HexColor("#6B6B6B")
-ROW_ALT = colors.HexColor("#F3F4F7")
-LINE_GRAY = colors.HexColor("#D9DCE1")
-WHITE = colors.white
+NAVY = (30, 42, 68)
+GOLD = (184, 145, 47)
+GOLD_SOFT = (243, 233, 210)
+INK = (35, 35, 35)
+GRAY_TEXT = (107, 107, 107)
+ROW_ALT = (243, 244, 247)
+LINE_GRAY = (217, 220, 225)
+WHITE = (255, 255, 255)
 
-PAGE_W, PAGE_H = A4
-HEADER_H = 25 * mm
-FOOTER_H = 12 * mm
+PAGE_W = 210  # A4 em mm
 MARGIN = 14
-CONTENT_W = PAGE_W - 2 * MARGIN
+HEADER_H = 26
+FOOTER_Y = 283
 
 
-def _draw_header_footer(nome, data):
-    """Retorna uma função onPage(canvas, doc) que desenha o cabeçalho
-    (faixa colorida com título) e o rodapé (linha + timestamp + paginação)."""
-
-    def _on_page(canvas, doc):
-        canvas.saveState()
-
-        # ---- Faixa superior (letterhead) ----
-        canvas.setFillColor(NAVY)
-        canvas.rect(0, PAGE_H - HEADER_H, PAGE_W, HEADER_H, stroke=0, fill=1)
-
-        # linha de destaque dourada sob a faixa
-        canvas.setFillColor(GOLD)
-        canvas.rect(0, PAGE_H - HEADER_H - 1.6, PAGE_W, 1.6, stroke=0, fill=1)
-
-        canvas.setFillColor(WHITE)
-        canvas.setFont("Helvetica-Bold", 15)
-        canvas.drawString(MARGIN, PAGE_H - 11 * mm, "MAPA NUMEROLÓGICO")
-
-        canvas.setFont("Helvetica", 8.3)
-        canvas.setFillColor(colors.HexColor("#D8DEEA"))
-        canvas.drawString(MARGIN, PAGE_H - 16.3 * mm, "Relatório pessoal de análise numerológica")
-
-        # nome + data alinhados à direita na faixa
-        canvas.setFont("Helvetica-Bold", 9.5)
-        canvas.setFillColor(WHITE)
-        canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 10.4 * mm, nome or "-")
-        canvas.setFont("Helvetica", 8.3)
-        canvas.setFillColor(colors.HexColor("#D8DEEA"))
-        canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 15.2 * mm, f"Nascimento: {data or '-'}")
-
-        # ---- Rodapé ----
-        canvas.setStrokeColor(LINE_GRAY)
-        canvas.setLineWidth(0.6)
-        canvas.line(MARGIN, FOOTER_H, PAGE_W - MARGIN, FOOTER_H)
-
-        canvas.setFont("Helvetica", 7.3)
-        canvas.setFillColor(GRAY_TEXT)
-        emissao = datetime.now().strftime("%d/%m/%Y %H:%M")
-        canvas.drawString(MARGIN, FOOTER_H - 5.5 * mm, f"Emitido em {emissao}")
-        canvas.drawCentredString(PAGE_W / 2, FOOTER_H - 5.5 * mm, "Mapa Numerológico — Documento gerado automaticamente")
-        canvas.drawRightString(PAGE_W - MARGIN, FOOTER_H - 5.5 * mm, f"Página {doc.page}")
-
-        canvas.restoreState()
-
-    return _on_page
+def _safe(s):
+    """Remove caracteres fora do Latin-1 (fonte núcleo do PDF só suporta
+    esse conjunto), trocando os mais comuns por equivalentes simples e
+    descartando qualquer outro em vez de travar a geração do PDF."""
+    if s is None:
+        return ""
+    s = str(s)
+    s = (s.replace("\u2014", "-").replace("\u2013", "-")
+           .replace("\u2265", ">=").replace("\u2264", "<=")
+           .replace("\u2019", "'").replace("\u2018", "'")
+           .replace("\u201c", '"').replace("\u201d", '"'))
+    return s.encode("latin-1", errors="replace").decode("latin-1")
 
 
-def _section_title(text, styles):
-    """Título de seção com barra dourada à esquerda (via tabela 1x1)."""
-    bar = RLTable([[Paragraph(text, styles["SectionText"])]], colWidths=[CONTENT_W])
-    bar.setStyle(TableStyle([
-        ("LEFTPADDING", (0, 0), (-1, -1), 8),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ("LINEBEFORE", (0, 0), (0, 0), 2.6, GOLD),
-        ("BACKGROUND", (0, 0), (-1, -1), GOLD_SOFT),
-    ]))
-    return bar
+class _PDF(FPDF):
+    def __init__(self, nome, data, *args, **kwargs):
+        self._nome = _safe(nome)
+        self._data_nasc = _safe(data)
+        super().__init__(*args, **kwargs)
+        self.set_auto_page_break(auto=True, margin=20)
+        self.set_margins(MARGIN, HEADER_H + 6, MARGIN)
+
+    def header(self):
+        self.set_fill_color(*NAVY)
+        self.rect(0, 0, PAGE_W, HEADER_H, style="F")
+        self.set_fill_color(*GOLD)
+        self.rect(0, HEADER_H, PAGE_W, 1.2, style="F")
+
+        self.set_xy(MARGIN, 6)
+        self.set_text_color(255, 255, 255)
+        self.set_font("Helvetica", "B", 15)
+        self.cell(120, 8, _safe("MAPA NUMEROLOGICO"))
+
+        self.set_xy(MARGIN, 15)
+        self.set_font("Helvetica", "", 9)
+        self.set_text_color(216, 222, 234)
+        self.cell(120, 6, _safe("Relatorio pessoal de analise numerologica"))
+
+        self.set_xy(PAGE_W - MARGIN - 90, 6)
+        self.set_text_color(255, 255, 255)
+        self.set_font("Helvetica", "B", 10)
+        self.cell(90, 8, self._nome, align="R")
+
+        self.set_xy(PAGE_W - MARGIN - 90, 15)
+        self.set_font("Helvetica", "", 9)
+        self.set_text_color(216, 222, 234)
+        self.cell(90, 6, _safe(f"Nascimento: {self._data_nasc}"), align="R")
+
+        self.set_y(HEADER_H + 6)
+
+    def footer(self):
+        self.set_y(-16)
+        self.set_draw_color(*LINE_GRAY)
+        self.line(MARGIN, self.get_y(), PAGE_W - MARGIN, self.get_y())
+        self.set_font("Helvetica", "", 7.5)
+        self.set_text_color(*GRAY_TEXT)
+        emissao = _safe(datetime.now().strftime("%d/%m/%Y %H:%M"))
+        self.set_xy(MARGIN, self.get_y() + 2)
+        self.cell(60, 5, f"Emitido em {emissao}")
+        self.set_xy(PAGE_W - MARGIN - 60, self.get_y())
+        self.cell(60, 5, _safe(f"Pagina {self.page_no()}"), align="R")
+
+    # ----------------------------------------------------------- Ajudas --
+    def section_title(self, texto):
+        self.ln(3)
+        self.set_fill_color(*GOLD_SOFT)
+        self.set_text_color(*NAVY)
+        self.set_font("Helvetica", "B", 11)
+        y0 = self.get_y()
+        self.cell(0, 8, "  " + _safe(texto), fill=True)
+        self.ln(8)
+        self.set_draw_color(*GOLD)
+        self.set_line_width(1)
+        self.line(MARGIN, y0, MARGIN, y0 + 8)
+        self.set_line_width(0.2)
+        self.ln(1)
+
+    def label_value_row(self, label, value, col_w=None):
+        col_w = col_w or (PAGE_W - 2 * MARGIN) / 2
+        self.set_font("Helvetica", "", 9.5)
+        self.set_text_color(*GRAY_TEXT)
+        self.cell(col_w * 0.5, 6, _safe(label))
+        self.set_font("Helvetica", "B", 9.5)
+        self.set_text_color(*INK)
+        self.cell(col_w * 0.5, 6, _safe(value))
+        self.ln(6)
+
+    def paragraph(self, texto):
+        self.set_font("Helvetica", "", 9.3)
+        self.set_text_color(*INK)
+        self.multi_cell(0, 5.2, _safe(texto), align="J")
+        self.ln(1.5)
 
 
-def _base_table_style(header_bg=NAVY, header_fg=WHITE, font_size=8.6,
-                       zebra=True, align="CENTER"):
-    style = [
-        ("BACKGROUND", (0, 0), (-1, 0), header_bg),
-        ("TEXTCOLOR", (0, 0), (-1, 0), header_fg),
-        ("FONT", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), font_size),
-        ("ALIGN", (0, 0), (-1, -1), align),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LINEBELOW", (0, 0), (-1, 0), 0.8, header_bg),
-        ("LINEBELOW", (0, 1), (-1, -2), 0.4, LINE_GRAY),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ]
-    if zebra:
-        style.append(("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, ROW_ALT]))
-    return TableStyle(style)
-
-
-def _stylesheet():
-    styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(
-        name="SectionText", fontSize=10.2, leading=12,
-        textColor=NAVY, fontName="Helvetica-Bold", alignment=TA_LEFT,
-    ))
-    styles.add(ParagraphStyle(
-        name="Body", fontSize=9, leading=12, textColor=INK,
-    ))
-    styles.add(ParagraphStyle(
-        name="CardLabel", fontSize=8.2, leading=10, alignment=TA_CENTER,
-        textColor=colors.HexColor("#E7ECF5"),
-    ))
-    styles.add(ParagraphStyle(
-        name="CardValue", fontSize=19, leading=21, alignment=TA_CENTER,
-        textColor=GOLD, fontName="Helvetica-Bold",
-    ))
-    styles.add(ParagraphStyle(
-        name="AnaliseTitulo", fontSize=15, leading=18, textColor=NAVY,
-        fontName="Helvetica-Bold", spaceAfter=4,
-    ))
-    styles.add(ParagraphStyle(
-        name="AnaliseDisclaimer", fontSize=8, leading=11,
-        textColor=GRAY_TEXT, fontName="Helvetica-Oblique", spaceAfter=10,
-    ))
-    styles.add(ParagraphStyle(
-        name="AnaliseSubtitulo", fontSize=10.5, leading=13, textColor=NAVY,
-        fontName="Helvetica-Bold", spaceBefore=10, spaceAfter=4,
-    ))
-    styles.add(ParagraphStyle(
-        name="AnaliseBody", fontSize=9.3, leading=13, textColor=INK,
-        alignment=TA_JUSTIFY, spaceAfter=6,
-    ))
-    return styles
-
-
-def _numero_cards(r, styles):
-    """Linha de cartões destacando os Números Fundamentais."""
-    itens = [
-        ("Interior", r["Interior"]),
-        ("Exterior", r["Exterior"]),
-        ("Síntese", r["Síntese"]),
-        ("Caminho", r["Caminho"]),
-        ("Quinta", r["Quinta"]),
-        ("Karma", r["Soma"]),
-    ]
-    col_w = CONTENT_W / len(itens)
-    cell = []
+def _numero_cards(pdf, itens):
+    """Linha de 'cartões' navy/dourado com os números fundamentais."""
+    content_w = PAGE_W - 2 * MARGIN
+    n = len(itens)
+    gap = 2
+    card_w = (content_w - gap * (n - 1)) / n
+    card_h = 20
+    x0 = MARGIN
+    y0 = pdf.get_y()
     for label, valor in itens:
-        mini = RLTable(
-            [[Paragraph(label.upper(), styles["CardLabel"])],
-             [Paragraph(str(valor), styles["CardValue"])]],
-            colWidths=[col_w - 4],
-        )
-        mini.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), NAVY),
-            ("TOPPADDING", (0, 0), (0, 0), 5),
-            ("BOTTOMPADDING", (0, 0), (0, 0), 1),
-            ("TOPPADDING", (0, 1), (0, 1), 0),
-            ("BOTTOMPADDING", (0, 1), (0, 1), 6),
-            ("LINEBELOW", (0, 0), (0, 0), 1, GOLD),
-        ]))
-        cell.append(mini)
-    row = RLTable([cell], colWidths=[col_w] * len(itens))
-    row.setStyle(TableStyle([
-        ("LEFTPADDING", (0, 0), (-1, -1), 2),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-        ("TOPPADDING", (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-    ]))
-    return row
+        pdf.set_fill_color(*NAVY)
+        pdf.rect(x0, y0, card_w, card_h, style="F")
+        pdf.set_xy(x0, y0 + 3)
+        pdf.set_font("Helvetica", "", 7.3)
+        pdf.set_text_color(231, 236, 245)
+        pdf.cell(card_w, 4, _safe(label.upper()), align="C")
+        pdf.set_xy(x0, y0 + 9)
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.set_text_color(*GOLD)
+        pdf.cell(card_w, 8, _safe(valor), align="C")
+        x0 += card_w + gap
+    pdf.set_xy(MARGIN, y0 + card_h + 4)
+
+
+def _tabela_numerica(pdf, rows, total_letras, total_nome):
+    content_w = PAGE_W - 2 * MARGIN
+    col_w = content_w / 3
+    row_h = 6.5
+
+    pdf.set_fill_color(*NAVY)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 9)
+    for h in ("Numero", "Qtd", "Somatorio"):
+        pdf.cell(col_w, row_h, _safe(h), fill=True, align="C")
+    pdf.ln(row_h)
+
+    pdf.set_font("Helvetica", "", 9)
+    for i, (n, qtd, soma) in enumerate(rows):
+        bg = WHITE if i % 2 == 0 else ROW_ALT
+        pdf.set_fill_color(*bg)
+        pdf.set_text_color(*INK)
+        for val in (n, qtd, soma):
+            pdf.cell(col_w, row_h, _safe(val), fill=True, align="C")
+        pdf.ln(row_h)
+
+    pdf.set_fill_color(*GOLD_SOFT)
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_text_color(*INK)
+    for val in ("TOTAL", total_letras, total_nome):
+        pdf.cell(col_w, row_h, _safe(val), fill=True, align="C")
+    pdf.ln(row_h + 3)
 
 
 def gerar_pdf(nome: str, data: str, r: dict, pasta_destino: str) -> str:
@@ -203,121 +192,79 @@ def gerar_pdf(nome: str, data: str, r: dict, pasta_destino: str) -> str:
     agora = datetime.now().strftime("%Y%m%d_%H%M%S")
     caminho = os.path.join(pasta_destino, f"Mapa_Numerologico_{safe_nome}_{agora}.pdf")
 
-    doc = SimpleDocTemplate(
-        caminho,
-        pagesize=A4,
-        rightMargin=MARGIN,
-        leftMargin=MARGIN,
-        topMargin=HEADER_H + 6,
-        bottomMargin=FOOTER_H + 6,
-        title=f"Mapa Numerológico - {nome}",
-        author="Mapa Numerológico",
-    )
+    pdf = _PDF(nome, data, orientation="P", unit="mm", format="A4")
+    pdf.add_page()
 
-    styles = _stylesheet()
-    story = []
+    # ---- Números fundamentais ----
+    itens = [
+        ("Interior", r["Interior"]), ("Exterior", r["Exterior"]),
+        ("Sintese", r["Síntese"]), ("Caminho", r["Caminho"]),
+        ("Quinta", r["Quinta"]), ("Karma", r["Soma"]),
+    ]
+    _numero_cards(pdf, itens)
 
-    # Cartões dos números fundamentais
-    story.append(_numero_cards(r, styles))
-    story.append(Spacer(1, 8))
-
-    # Vocação + Desafios
-    story.append(_section_title("Vocação e Desafios", styles))
-    story.append(Spacer(1, 3))
+    # ---- Vocação e Desafios ----
+    pdf.section_title("Vocacao e Desafios")
     voc = r["Vocacao"]
     des = r["Desafios"]
-    vd = [
-        ["Vocação", "", "Desafios", ""],
-        ["Dia", str(voc["Dia do Nascimento"]), "1º", str(des["1º"])],
-        ["Síntese", str(voc["Síntese"]), "2º", str(des["2º"])],
-        ["Caminho", str(voc["Caminho da Vida"]), "3º", str(des["3º"])],
-        ["", "", "4º", str(des["4º"])],
-    ]
-    vt = RLTable(vd, colWidths=[CONTENT_W * 0.30, CONTENT_W * 0.20, CONTENT_W * 0.30, CONTENT_W * 0.20])
-    vt.setStyle(_base_table_style())
-    story.append(vt)
-    story.append(Spacer(1, 8))
+    col_w = (PAGE_W - 2 * MARGIN) / 2
+    y_start = pdf.get_y()
+    pdf.label_value_row("Dia:", voc["Dia do Nascimento"], col_w)
+    pdf.label_value_row("Sintese:", voc["Síntese"], col_w)
+    pdf.label_value_row("Caminho:", voc["Caminho da Vida"], col_w)
+    y_after_voc = pdf.get_y()
 
-    # Tabela numérica + Temperamentos + Ausentes/Excessos lado a lado
-    story.append(_section_title("Tabela Numérica, Temperamentos e Observações", styles))
-    story.append(Spacer(1, 3))
+    pdf.set_xy(MARGIN + col_w, y_start)
+    for pos in ("1º", "2º", "3º", "4º"):
+        pdf.set_x(MARGIN + col_w)
+        pdf.label_value_row(f"{pos}:", des[pos], col_w)
+    pdf.set_y(max(y_after_voc, pdf.get_y()))
 
-    tn = [["Nº", "Qtd", "Somatório"]] + [[str(a), str(b), str(c)] for a, b, c in r["TabelaRows"]]
-    tn.append(["TOTAL", str(r["TotalLetras"]), str(r["TotalNome"])])
-    tnt = RLTable(tn, colWidths=[CONTENT_W * 0.34 / 3] * 3)
-    tnt_style = _base_table_style(font_size=8.4)
-    tnt_style.add("FONT", (0, -1), (-1, -1), "Helvetica-Bold")
-    tnt_style.add("BACKGROUND", (0, -1), (-1, -1), GOLD_SOFT)
-    tnt.setStyle(tnt_style)
+    # ---- Tabela numérica ----
+    pdf.section_title("Tabela Numerica do Nome")
+    _tabela_numerica(pdf, r["TabelaRows"], r["TotalLetras"], r["TotalNome"])
 
+    # ---- Temperamentos ----
+    pdf.section_title("Temperamentos")
     e = r["Eixos"]
-    eixos_rows = [["Temperamento", "Valor"]]
     for k, v in e.items():
-        eixos_rows.append([k.replace("Eixo ", ""), str(v)])
-    et = RLTable(eixos_rows, colWidths=[CONTENT_W * 0.44, CONTENT_W * 0.22])
-    et_style = _base_table_style(font_size=8.4, align="LEFT")
-    et_style.add("ALIGN", (1, 0), (1, -1), "CENTER")
-    et.setStyle(et_style)
+        pdf.label_value_row(f"{k.replace('Eixo ', '')}:", v)
 
+    # ---- Ausentes / Excessos ----
+    pdf.section_title("Ausentes, Excessos e Totais")
     aus = ", ".join(map(str, r["Ausentes"])) if r["Ausentes"] else "Nenhum"
     exc = ", ".join(map(str, r["Excessos"])) if r["Excessos"] else "Nenhum"
-    ax = RLTable(
-        [["Ausentes", aus], [f"Excessos (≥{LIMIAR_EXCESSO})", exc]],
-        colWidths=[CONTENT_W * 0.30, CONTENT_W * 0.36],
+    pdf.label_value_row("Ausentes:", aus)
+    pdf.label_value_row(f"Excessos (>={LIMIAR_EXCESSO}):", exc)
+    pdf.label_value_row("Total nome:", r["TotalNome"])
+    pdf.label_value_row("Total letras:", r["TotalLetras"])
+
+    # ---- Análise Interpretativa (pode ocupar mais de uma página) ----
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.set_text_color(*NAVY)
+    pdf.cell(0, 8, _safe("Analise Interpretativa"))
+    pdf.ln(8)
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(*GRAY_TEXT)
+    pdf.multi_cell(
+        0, 4.5,
+        _safe("Leitura simbolica baseada na tradicao numerologica, pensada como "
+              "ferramenta de autorreflexao - nao como diagnostico, previsao ou "
+              "afirmacao factual."),
     )
-    ax_style = TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.4, LINE_GRAY),
-        ("FONTSIZE", (0, 0), (-1, -1), 8.2),
-        ("FONT", (0, 0), (0, -1), "Helvetica-Bold"),
-        ("TEXTCOLOR", (0, 0), (0, -1), NAVY),
-        ("ALIGN", (0, 0), (0, -1), "LEFT"),
-        ("ALIGN", (1, 0), (1, -1), "LEFT"),
-        ("BACKGROUND", (0, 0), (0, -1), GOLD_SOFT),
-        ("LEFTPADDING", (0, 0), (-1, -1), 5),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ])
-    ax.setStyle(ax_style)
+    pdf.ln(2)
 
-    right_stack = RLTable([[et], [Spacer(1, 5)], [ax]], colWidths=[CONTENT_W * 0.66])
-    right_stack.setStyle(TableStyle([
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ("TOPPADDING", (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-    ]))
-
-    bottom = RLTable([[tnt, right_stack]], colWidths=[CONTENT_W * 0.34, CONTENT_W * 0.66])
-    bottom.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (0, 0), 0),
-        ("RIGHTPADDING", (0, 0), (0, 0), 10),
-        ("LEFTPADDING", (1, 0), (1, 0), 0),
-        ("RIGHTPADDING", (1, 0), (1, 0), 0),
-        ("TOPPADDING", (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-    ]))
-    story.append(bottom)
-
-    # ---- Página(s) seguintes: Análise Interpretativa completa ----
-    analise_story = [PageBreak()]
-    analise_story.append(Paragraph("Análise Interpretativa", styles["AnaliseTitulo"]))
-    analise_story.append(Paragraph(
-        "Leitura simbólica baseada na tradição numerológica, pensada como ferramenta "
-        "de autorreflexão — não como diagnóstico, previsão ou afirmação factual.",
-        styles["AnaliseDisclaimer"],
-    ))
     for titulo_secao, paragrafos in analise_completa(nome, r):
-        analise_story.append(Paragraph(titulo_secao, styles["AnaliseSubtitulo"]))
+        pdf.set_font("Helvetica", "B", 10.5)
+        pdf.set_text_color(*NAVY)
+        pdf.cell(0, 7, _safe(titulo_secao))
+        pdf.ln(7)
         for p in paragrafos:
-            analise_story.append(Paragraph(p, styles["AnaliseBody"]))
+            # remove tags <b>/</b> usadas na versão reportlab (fpdf2 core
+            # fonts não interpretam HTML); mantém só o texto.
+            texto_limpo = p.replace("<b>", "").replace("</b>", "")
+            pdf.paragraph(texto_limpo)
 
-    full_story = [KeepTogether(story)] + analise_story
-
-    doc.build(
-        full_story,
-        onFirstPage=_draw_header_footer(nome, data),
-        onLaterPages=_draw_header_footer(nome, data),
-    )
+    pdf.output(caminho)
     return caminho
