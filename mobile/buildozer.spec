@@ -10,9 +10,10 @@ source.include_exts = py,kv,png,jpg,jpeg,ttf,atlas
 version = 1.0
 
 # reportlab: geração do PDF. plyer: compartilhar o PDF pelo Android (Share sheet).
-# python3 travado em 3.11.6: versões mais novas (3.13/3.14) ainda não são
-# suportadas pelo ReportLab nem por todas as dependências do Kivy no Android.
-requirements = python3==3.11.6,kivy==2.2.1,reportlab,plyer
+# python3 e hostpython3 travados em 3.11.6 (precisam ser IGUAIS): versões mais
+# novas (3.13/3.14) ainda não são suportadas pelo ReportLab nem por todas as
+# dependências do Kivy no Android.
+requirements = python3==3.11.6,hostpython3==3.11.6,kivy==2.2.1,reportlab,plyer
 
 orientation = portrait
 fullscreen = 0
