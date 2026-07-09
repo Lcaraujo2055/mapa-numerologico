@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - "mobile/**"
+      - ".github/workflows/build-apk.yml"
   workflow_dispatch:
 
 jobs:
@@ -13,18 +14,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Ação da comunidade Kivy que instala o toolchain do Android (SDK/NDK)
-      # e roda o buildozer automaticamente. Não é mantida pela Anthropic —
-      # é a ferramenta padrão usada pela própria comunidade Kivy para isso.
-      - name: Build com Buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
-        id: buildozer
+      - name: Instalar dependências de sistema
+        run: |
+          sudo apt update
+          sudo apt install -y git zip unzip openjdk-17-jdk python3-pip \
+            autoconf libtool pkg-config zlib1g-dev libncurses5-dev \
+            libncursesw5-dev cmake libffi-dev libssl-dev automake
+
+      - name: Cache do Buildozer (SDK/NDK) para acelerar próximas builds
+        uses: actions/cache@v4
         with:
-          workdir: mobile
-          buildozer_version: stable
+          path: |
+            ~/.buildozer
+            mobile/.buildozer
+          key: buildozer-${{ hashFiles('mobile/buildozer.spec') }}
+
+      - name: Instalar Buildozer
+        run: |
+          pip3 install --user buildozer cython==0.29.33
+
+      - name: Rodar Buildozer (gera o APK)
+        working-directory: mobile
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          yes | buildozer -v android debug
 
       - name: Publicar o APK gerado
         uses: actions/upload-artifact@v4
         with:
           name: mapa-numerologico-apk
-          path: ${{ steps.buildozer.outputs.filename }}
+          path: mobile/bin/*.apk
