@@ -1,0 +1,30 @@
+name: Build APK
+
+# Roda ao dar push na pasta mobile/, ou manualmente pela aba "Actions" no GitHub.
+on:
+  push:
+    paths:
+      - "mobile/**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # Ação da comunidade Kivy que instala o toolchain do Android (SDK/NDK)
+      # e roda o buildozer automaticamente. Não é mantida pela Anthropic —
+      # é a ferramenta padrão usada pela própria comunidade Kivy para isso.
+      - name: Build com Buildozer
+        uses: ArtemSBulgakov/buildozer-action@v1
+        id: buildozer
+        with:
+          workdir: mobile
+          buildozer_version: stable
+
+      - name: Publicar o APK gerado
+        uses: actions/upload-artifact@v4
+        with:
+          name: mapa-numerologico-apk
+          path: ${{ steps.buildozer.outputs.filename }}

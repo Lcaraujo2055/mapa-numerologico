@@ -1,0 +1,239 @@
+#:kivy 2.2.0
+#:import dp kivy.metrics.dp
+#:import sp kivy.metrics.sp
+
+# ----------------------------------------------------------------- Paleta
+# Navy   0.118, 0.165, 0.267
+# Gold   0.722, 0.569, 0.184
+# GoldSoft 0.953, 0.914, 0.822
+# InkText 0.14, 0.14, 0.14
+# GrayText 0.42, 0.42, 0.42
+# Border 0.89, 0.89, 0.89
+# RowAlt 0.933, 0.945, 0.965
+
+# --------------------------------------------------- Botões (dynamic class)
+<PrimaryButton@Button>:
+    background_normal: ''
+    background_down: ''
+    background_color: 0, 0, 0, 0
+    color: 1, 1, 1, 1
+    bold: True
+    font_size: sp(13)
+    canvas.before:
+        Color:
+            rgba: (0.09, 0.13, 0.22, 1) if self.state == 'down' else (0.118, 0.165, 0.267, 1)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(8)]
+
+<GoldButton@Button>:
+    background_normal: ''
+    background_down: ''
+    background_color: 0, 0, 0, 0
+    color: 0.1, 0.1, 0.1, 1
+    bold: True
+    font_size: sp(13)
+    canvas.before:
+        Color:
+            rgba: (0.55, 0.43, 0.14, 1) if self.state == 'down' else (0.722, 0.569, 0.184, 1)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(8)]
+
+<GhostButton@Button>:
+    background_normal: ''
+    background_down: ''
+    background_color: 0, 0, 0, 0
+    color: 0.14, 0.14, 0.14, 1
+    font_size: sp(13)
+    canvas.before:
+        Color:
+            rgba: 0.89, 0.89, 0.89, 1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(8)]
+
+<SectionTitle@Label>:
+    bold: True
+    font_size: sp(14)
+    color: 0.118, 0.165, 0.267, 1
+    halign: 'left'
+    valign: 'middle'
+    text_size: self.size
+    size_hint_y: None
+    height: dp(28)
+
+# --------------------------------------------------------- Widgets custom
+<NumberCard>:
+    orientation: 'vertical'
+    padding: dp(4)
+    canvas.before:
+        Color:
+            rgba: 0.118, 0.165, 0.267, 1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(10)]
+    Label:
+        text: root.titulo
+        font_size: sp(10.5)
+        color: 0.78, 0.82, 0.88, 1
+        size_hint_y: 0.42
+        text_size: self.size
+        halign: 'center'
+        valign: 'middle'
+    Label:
+        text: root.valor
+        font_size: sp(21)
+        bold: True
+        color: 0.722, 0.569, 0.184, 1
+        size_hint_y: 0.58
+        halign: 'center'
+        valign: 'middle'
+
+<ResultRow>:
+    orientation: 'horizontal'
+    size_hint_y: None
+    height: dp(26)
+    Label:
+        text: root.label_text
+        font_size: sp(12)
+        color: 0.42, 0.42, 0.42, 1
+        halign: 'left'
+        valign: 'middle'
+        text_size: self.size
+        size_hint_x: 0.55
+    Label:
+        text: root.value_text
+        font_size: sp(12)
+        bold: True
+        color: 0.14, 0.14, 0.14, 1
+        halign: 'left'
+        valign: 'middle'
+        text_size: self.size
+        size_hint_x: 0.45
+
+<SectionBlock>:
+    orientation: 'vertical'
+    padding: dp(12)
+    spacing: dp(2)
+    size_hint_y: None
+    height: self.minimum_height
+    canvas.before:
+        Color:
+            rgba: 1, 1, 1, 1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(10)]
+        Color:
+            rgba: 0.89, 0.89, 0.89, 1
+        Line:
+            rounded_rectangle: [self.x, self.y, self.width, self.height, dp(10)]
+            width: 1
+
+<CellLabel>:
+    canvas.before:
+        Color:
+            rgba: root.bg_color
+        Rectangle:
+            pos: self.pos
+            size: self.size
+    color: 0.14, 0.14, 0.14, 1
+    font_size: sp(12)
+    bold: root.is_bold
+    size_hint_y: None
+    height: dp(28)
+    halign: 'center'
+    valign: 'middle'
+
+# ------------------------------------------------------------------- Root
+<RootWidget>:
+    orientation: 'vertical'
+    canvas.before:
+        Color:
+            rgba: 0.96, 0.96, 0.97, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    BoxLayout:
+        size_hint_y: None
+        height: dp(60)
+        padding: dp(14), dp(6)
+        canvas.before:
+            Color:
+                rgba: 0.118, 0.165, 0.267, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+        Label:
+            markup: True
+            text: "[b]Mapa Numerol\u00f3gico[/b]\n[size=11][color=#c7d0e0]An\u00e1lise numerol\u00f3gica profissional[/color][/size]"
+            halign: 'left'
+            valign: 'middle'
+            text_size: self.size
+
+    BoxLayout:
+        orientation: 'vertical'
+        size_hint_y: None
+        height: dp(158)
+        padding: dp(12), dp(10)
+        spacing: dp(8)
+        canvas.before:
+            Color:
+                rgba: 1, 1, 1, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+            Color:
+                rgba: 0.89, 0.89, 0.89, 1
+            Line:
+                points: [self.x, self.y, self.x + self.width, self.y]
+                width: 1
+
+        TextInput:
+            id: in_nome
+            hint_text: 'Nome completo'
+            multiline: False
+            size_hint_y: None
+            height: dp(42)
+            font_size: sp(14)
+            padding: dp(10), dp(11)
+
+        TextInput:
+            id: in_data
+            hint_text: 'Data de nascimento (dd/mm/aaaa)'
+            multiline: False
+            size_hint_y: None
+            height: dp(42)
+            font_size: sp(14)
+            padding: dp(10), dp(11)
+
+        BoxLayout:
+            size_hint_y: None
+            height: dp(46)
+            spacing: dp(8)
+            PrimaryButton:
+                text: 'Calcular'
+                on_release: app.on_calcular()
+            GoldButton:
+                text: 'Gerar PDF'
+                on_release: app.on_gerar_pdf()
+            GhostButton:
+                text: 'Limpar'
+                on_release: app.on_limpar()
+
+    ScrollView:
+        id: scroll
+        do_scroll_x: False
+        BoxLayout:
+            id: content
+            orientation: 'vertical'
+            size_hint_y: None
+            height: self.minimum_height
+            padding: dp(12)
+            spacing: dp(12)
