@@ -27,6 +27,7 @@ from kivy.factory import Factory
 
 from core import mapa_completo, LIMIAR_EXCESSO
 from pdf_report import gerar_pdf
+from android_storage import save_to_downloads
 
 NAVY = (0.118, 0.165, 0.267, 1)
 GOLD = (0.722, 0.569, 0.184, 1)
@@ -257,7 +258,16 @@ class NumerologiaApp(App):
             return
 
         compartilhado = False  # compartilhamento nativo fica para uma próxima versão
-        if not compartilhado:
+        nome_arquivo = os.path.basename(caminho_pdf)
+        destino_downloads = save_to_downloads(caminho_pdf, nome_arquivo)
+
+        if destino_downloads:
+            show_popup(
+                "PDF gerado",
+                f"PDF salvo em Downloads:\n{nome_arquivo}\n\n"
+                "Abra o app Arquivos (ou Google Drive) e procure na pasta Downloads.",
+            )
+        elif not compartilhado:
             show_popup(
                 "PDF gerado",
                 f"PDF salvo em:\n{caminho_pdf}\n\n"

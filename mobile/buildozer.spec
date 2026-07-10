@@ -26,10 +26,10 @@ fullscreen = 0
 icon.filename = %(source.dir)s/icon.png
 # ^ ícone provisório (navy/dourado, letra N) — troque por outro icon.png 512x512 quando quiser.
 
-# Sem permissões especiais: o PDF é salvo no diretório privado do app
-# (App.user_data_dir) e compartilhado via content:// (plyer/FileProvider),
-# então não precisa de WRITE_EXTERNAL_STORAGE nem pedir permissão em runtime.
-android.permissions =
+# WRITE_EXTERNAL_STORAGE: só é realmente usada em aparelhos com Android 9
+# ou anterior, para salvar o PDF em Downloads (Android 10+ usa a API de
+# armazenamento con-escopo, que não precisa desta permissão).
+android.permissions = WRITE_EXTERNAL_STORAGE
 
 android.api = 33
 android.minapi = 21
