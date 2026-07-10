@@ -11,8 +11,19 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    env:
+      # Trava a versão do pip usada em TODO o processo (inclusive nas
+      # instalações internas que o próprio python-for-android dispara,
+      # fora do nosso controle direto). O pip mais recente disponível hoje
+      # está com um bug de auto-atualização dentro de venvs recém-criadas
+      # (ImportError em pip._vendor.resolvelib) — forçar uma versão mais
+      # antiga e estável evita esse problema por completo.
+      PIP_CONSTRAINT: ${{ github.workspace }}/pip-constraints.txt
     steps:
       - uses: actions/checkout@v4
+
+      - name: Criar arquivo de restrição de versão do pip
+        run: echo "pip==24.0" > pip-constraints.txt
 
       - name: Instalar dependências de sistema
         run: |
