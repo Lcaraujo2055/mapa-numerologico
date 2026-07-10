@@ -1,27 +1,24 @@
 # -*- coding: utf-8 -*-
 """
-Geração do PDF do Mapa Numerológico — versão Android, usando fpdf2.
+Geração do PDF do Mapa Numerológico — versão Android.
 
-Por que fpdf2 e não reportlab aqui: o python-for-android tem uma "receita"
-própria para reportlab que baixa uma versão antiga travada (ignorando
-qualquer versão pedida no buildozer.spec) e essa versão antiga não compila
-no Android (usa uma API interna do CPython que mudou a partir do Python
-3.11). O fpdf2 é 100% Python puro — sem nenhum código C — então não sofre
-desse problema.
+Escrito sobre `simplepdf.py` (zero dependências externas) em vez de
+reportlab/fpdf2 — ambos esbarraram em problemas específicos de empacotamento
+do python-for-android (recipe travada do reportlab; bug de pip ao instalar
+dependências do fpdf2 sem receita própria). Sem nenhuma dependência extra
+além do próprio Kivy, esse problema deixa de existir.
 
-Mesma assinatura de função que a versão desktop (`gerar_pdf(nome, data, r,
-pasta_destino) -> caminho`), para que main.py não precise de nenhuma
-alteração.
+Mesma assinatura de função que as versões anteriores
+(`gerar_pdf(nome, data, r, pasta_destino) -> caminho`), para que main.py não
+precise de nenhuma alteração.
 """
 import os
 from datetime import datetime
 
-from fpdf import FPDF
-
+from simplepdf import PDFDoc, A4_W, A4_H
 from core import LIMIAR_EXCESSO
 from interpretations import analise_completa
 
-# --------------------------------------------------------------- Paleta --
 NAVY = (30, 42, 68)
 GOLD = (184, 145, 47)
 GOLD_SOFT = (243, 233, 210)
@@ -31,157 +28,122 @@ ROW_ALT = (243, 244, 247)
 LINE_GRAY = (217, 220, 225)
 WHITE = (255, 255, 255)
 
-PAGE_W = 210  # A4 em mm
-MARGIN = 14
-HEADER_H = 26
-FOOTER_Y = 283
+PAGE_W, PAGE_H = A4_W, A4_H
+MARGIN = 40
+HEADER_H = 74
+CONTENT_W = PAGE_W - 2 * MARGIN
+BOTTOM_LIMIT = PAGE_H - 55
 
 
-def _safe(s):
-    """Remove caracteres fora do Latin-1 (fonte núcleo do PDF só suporta
-    esse conjunto), trocando os mais comuns por equivalentes simples e
-    descartando qualquer outro em vez de travar a geração do PDF."""
-    if s is None:
-        return ""
-    s = str(s)
-    s = (s.replace("\u2014", "-").replace("\u2013", "-")
-           .replace("\u2265", ">=").replace("\u2264", "<=")
-           .replace("\u2019", "'").replace("\u2018", "'")
-           .replace("\u201c", '"').replace("\u201d", '"'))
-    return s.encode("latin-1", errors="replace").decode("latin-1")
+class MobileReport:
+    def __init__(self, nome, data):
+        self.doc = PDFDoc()
+        self.nome = nome
+        self.data = data
+        self.page_num = 0
+        self.y = 0
+        self._new_page()
 
+    # ------------------------------------------------------------ Páginas
+    def _new_page(self):
+        self.doc.add_page()
+        self.page_num += 1
+        self._draw_chrome()
+        self.y = HEADER_H + 18
 
-class _PDF(FPDF):
-    def __init__(self, nome, data, *args, **kwargs):
-        self._nome = _safe(nome)
-        self._data_nasc = _safe(data)
-        super().__init__(*args, **kwargs)
-        self.set_auto_page_break(auto=True, margin=20)
-        self.set_margins(MARGIN, HEADER_H + 6, MARGIN)
+    def _draw_chrome(self):
+        d = self.doc
+        d.rect(0, 0, PAGE_W, HEADER_H, fill_rgb=NAVY)
+        d.rect(0, HEADER_H, PAGE_W, 3, fill_rgb=GOLD)
+        d.text(MARGIN, 13, "MAPA NUMEROLOGICO", font="HB", size=17, rgb=WHITE)
+        d.text(MARGIN, 37, "Relatorio pessoal de analise numerologica", font="H", size=9.5, rgb=(216, 222, 234))
 
-    def header(self):
-        self.set_fill_color(*NAVY)
-        self.rect(0, 0, PAGE_W, HEADER_H, style="F")
-        self.set_fill_color(*GOLD)
-        self.rect(0, HEADER_H, PAGE_W, 1.2, style="F")
+        box_w = 230
+        x_right = PAGE_W - MARGIN - box_w
+        d.text(x_right, 13, self.nome, font="HB", size=11, rgb=WHITE, align="R", max_width=box_w)
+        d.text(x_right, 32, f"Nascimento: {self.data}", font="H", size=9.5, rgb=(216, 222, 234), align="R", max_width=box_w)
 
-        self.set_xy(MARGIN, 6)
-        self.set_text_color(255, 255, 255)
-        self.set_font("Helvetica", "B", 15)
-        self.cell(120, 8, _safe("MAPA NUMEROLOGICO"))
+        footer_y = PAGE_H - 40
+        d.line(MARGIN, footer_y, PAGE_W - MARGIN, footer_y, rgb=LINE_GRAY, line_width=0.7)
+        emissao = datetime.now().strftime("%d/%m/%Y %H:%M")
+        d.text(MARGIN, footer_y + 8, f"Emitido em {emissao}", font="H", size=8, rgb=GRAY_TEXT)
+        d.text(MARGIN, footer_y + 8, f"Pagina {self.page_num}", font="H", size=8,
+               rgb=GRAY_TEXT, align="R", max_width=CONTENT_W)
 
-        self.set_xy(MARGIN, 15)
-        self.set_font("Helvetica", "", 9)
-        self.set_text_color(216, 222, 234)
-        self.cell(120, 6, _safe("Relatorio pessoal de analise numerologica"))
+    def ensure_space(self, needed_h):
+        if self.y + needed_h > BOTTOM_LIMIT:
+            self._new_page()
 
-        self.set_xy(PAGE_W - MARGIN - 90, 6)
-        self.set_text_color(255, 255, 255)
-        self.set_font("Helvetica", "B", 10)
-        self.cell(90, 8, self._nome, align="R")
+    def force_new_page(self):
+        self._new_page()
 
-        self.set_xy(PAGE_W - MARGIN - 90, 15)
-        self.set_font("Helvetica", "", 9)
-        self.set_text_color(216, 222, 234)
-        self.cell(90, 6, _safe(f"Nascimento: {self._data_nasc}"), align="R")
-
-        self.set_y(HEADER_H + 6)
-
-    def footer(self):
-        self.set_y(-16)
-        self.set_draw_color(*LINE_GRAY)
-        self.line(MARGIN, self.get_y(), PAGE_W - MARGIN, self.get_y())
-        self.set_font("Helvetica", "", 7.5)
-        self.set_text_color(*GRAY_TEXT)
-        emissao = _safe(datetime.now().strftime("%d/%m/%Y %H:%M"))
-        self.set_xy(MARGIN, self.get_y() + 2)
-        self.cell(60, 5, f"Emitido em {emissao}")
-        self.set_xy(PAGE_W - MARGIN - 60, self.get_y())
-        self.cell(60, 5, _safe(f"Pagina {self.page_no()}"), align="R")
-
-    # ----------------------------------------------------------- Ajudas --
+    # -------------------------------------------------------------- Peças
     def section_title(self, texto):
-        self.ln(3)
-        self.set_fill_color(*GOLD_SOFT)
-        self.set_text_color(*NAVY)
-        self.set_font("Helvetica", "B", 11)
-        y0 = self.get_y()
-        self.cell(0, 8, "  " + _safe(texto), fill=True)
-        self.ln(8)
-        self.set_draw_color(*GOLD)
-        self.set_line_width(1)
-        self.line(MARGIN, y0, MARGIN, y0 + 8)
-        self.set_line_width(0.2)
-        self.ln(1)
+        self.ensure_space(28)
+        self.y += 6
+        d = self.doc
+        d.rect(MARGIN, self.y, CONTENT_W, 22, fill_rgb=GOLD_SOFT)
+        d.rect(MARGIN, self.y, 3, 22, fill_rgb=GOLD)
+        d.text(MARGIN + 10, self.y + 5, texto, font="HB", size=11, rgb=NAVY)
+        self.y += 22 + 6
 
-    def label_value_row(self, label, value, col_w=None):
-        col_w = col_w or (PAGE_W - 2 * MARGIN) / 2
-        self.set_font("Helvetica", "", 9.5)
-        self.set_text_color(*GRAY_TEXT)
-        self.cell(col_w * 0.5, 6, _safe(label))
-        self.set_font("Helvetica", "B", 9.5)
-        self.set_text_color(*INK)
-        self.cell(col_w * 0.5, 6, _safe(value))
-        self.ln(6)
+    def label_value(self, label, value, x=None, col_w=None):
+        x = MARGIN if x is None else x
+        col_w = col_w or CONTENT_W
+        d = self.doc
+        d.text(x, self.y, label, font="H", size=9.5, rgb=GRAY_TEXT, max_width=col_w * 0.5)
+        d.text(x + col_w * 0.42, self.y, str(value), font="HB", size=9.5, rgb=INK, max_width=col_w * 0.58)
+        self.y += 15
 
     def paragraph(self, texto):
-        self.set_font("Helvetica", "", 9.3)
-        self.set_text_color(*INK)
-        self.multi_cell(0, 5.2, _safe(texto), align="J")
-        self.ln(1.5)
+        d = self.doc
+        end_y = d.multi_text(MARGIN, self.y, texto, font="H", size=9.3, rgb=INK,
+                              max_width=CONTENT_W, leading=12.5, align="L")
+        self.y = end_y + 5
 
+    def cards(self, itens):
+        self.ensure_space(56)
+        d = self.doc
+        n = len(itens)
+        gap = 6
+        card_w = (CONTENT_W - gap * (n - 1)) / n
+        card_h = 50
+        x = MARGIN
+        for label, valor in itens:
+            d.rect(x, self.y, card_w, card_h, fill_rgb=NAVY)
+            d.text(x, self.y + 8, label.upper(), font="H", size=8, rgb=(216, 222, 234),
+                   align="C", max_width=card_w)
+            d.text(x, self.y + 22, str(valor), font="HB", size=17, rgb=GOLD,
+                   align="C", max_width=card_w)
+            x += card_w + gap
+        self.y += card_h + 14
 
-def _numero_cards(pdf, itens):
-    """Linha de 'cartões' navy/dourado com os números fundamentais."""
-    content_w = PAGE_W - 2 * MARGIN
-    n = len(itens)
-    gap = 2
-    card_w = (content_w - gap * (n - 1)) / n
-    card_h = 20
-    x0 = MARGIN
-    y0 = pdf.get_y()
-    for label, valor in itens:
-        pdf.set_fill_color(*NAVY)
-        pdf.rect(x0, y0, card_w, card_h, style="F")
-        pdf.set_xy(x0, y0 + 3)
-        pdf.set_font("Helvetica", "", 7.3)
-        pdf.set_text_color(231, 236, 245)
-        pdf.cell(card_w, 4, _safe(label.upper()), align="C")
-        pdf.set_xy(x0, y0 + 9)
-        pdf.set_font("Helvetica", "B", 14)
-        pdf.set_text_color(*GOLD)
-        pdf.cell(card_w, 8, _safe(valor), align="C")
-        x0 += card_w + gap
-    pdf.set_xy(MARGIN, y0 + card_h + 4)
+    def table(self, header, rows, col_widths, zebra=True, highlight_last=False):
+        d = self.doc
+        row_h = 17
+        self.ensure_space(row_h * (len(rows) + 1))
+        x0 = MARGIN
+        # cabeçalho
+        d.rect(x0, self.y, CONTENT_W, row_h, fill_rgb=NAVY)
+        cx = x0
+        for h, w in zip(header, col_widths):
+            d.text(cx, self.y + 4, h, font="HB", size=8.6, rgb=WHITE, align="C", max_width=w)
+            cx += w
+        self.y += row_h
+        for i, row in enumerate(rows):
+            is_last = highlight_last and i == len(rows) - 1
+            bg = GOLD_SOFT if is_last else (WHITE if (i % 2 == 0) else ROW_ALT)
+            d.rect(x0, self.y, CONTENT_W, row_h, fill_rgb=bg)
+            cx = x0
+            for val, w in zip(row, col_widths):
+                d.text(cx, self.y + 4, str(val), font=("HB" if is_last else "H"),
+                       size=8.6, rgb=INK, align="C", max_width=w)
+                cx += w
+            self.y += row_h
+        self.y += 10
 
-
-def _tabela_numerica(pdf, rows, total_letras, total_nome):
-    content_w = PAGE_W - 2 * MARGIN
-    col_w = content_w / 3
-    row_h = 6.5
-
-    pdf.set_fill_color(*NAVY)
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Helvetica", "B", 9)
-    for h in ("Numero", "Qtd", "Somatorio"):
-        pdf.cell(col_w, row_h, _safe(h), fill=True, align="C")
-    pdf.ln(row_h)
-
-    pdf.set_font("Helvetica", "", 9)
-    for i, (n, qtd, soma) in enumerate(rows):
-        bg = WHITE if i % 2 == 0 else ROW_ALT
-        pdf.set_fill_color(*bg)
-        pdf.set_text_color(*INK)
-        for val in (n, qtd, soma):
-            pdf.cell(col_w, row_h, _safe(val), fill=True, align="C")
-        pdf.ln(row_h)
-
-    pdf.set_fill_color(*GOLD_SOFT)
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.set_text_color(*INK)
-    for val in ("TOTAL", total_letras, total_nome):
-        pdf.cell(col_w, row_h, _safe(val), fill=True, align="C")
-    pdf.ln(row_h + 3)
+    def output(self, path):
+        self.doc.output(path)
 
 
 def gerar_pdf(nome: str, data: str, r: dict, pasta_destino: str) -> str:
@@ -192,8 +154,7 @@ def gerar_pdf(nome: str, data: str, r: dict, pasta_destino: str) -> str:
     agora = datetime.now().strftime("%Y%m%d_%H%M%S")
     caminho = os.path.join(pasta_destino, f"Mapa_Numerologico_{safe_nome}_{agora}.pdf")
 
-    pdf = _PDF(nome, data, orientation="P", unit="mm", format="A4")
-    pdf.add_page()
+    rep = MobileReport(nome, data)
 
     # ---- Números fundamentais ----
     itens = [
@@ -201,70 +162,66 @@ def gerar_pdf(nome: str, data: str, r: dict, pasta_destino: str) -> str:
         ("Sintese", r["Síntese"]), ("Caminho", r["Caminho"]),
         ("Quinta", r["Quinta"]), ("Karma", r["Soma"]),
     ]
-    _numero_cards(pdf, itens)
+    rep.cards(itens)
 
     # ---- Vocação e Desafios ----
-    pdf.section_title("Vocacao e Desafios")
+    rep.section_title("Vocacao e Desafios")
     voc = r["Vocacao"]
     des = r["Desafios"]
-    col_w = (PAGE_W - 2 * MARGIN) / 2
-    y_start = pdf.get_y()
-    pdf.label_value_row("Dia:", voc["Dia do Nascimento"], col_w)
-    pdf.label_value_row("Sintese:", voc["Síntese"], col_w)
-    pdf.label_value_row("Caminho:", voc["Caminho da Vida"], col_w)
-    y_after_voc = pdf.get_y()
-
-    pdf.set_xy(MARGIN + col_w, y_start)
+    half = CONTENT_W / 2
+    y_start = rep.y
+    rep.label_value("Dia:", voc["Dia do Nascimento"], x=MARGIN, col_w=half)
+    rep.label_value("Sintese:", voc["Síntese"], x=MARGIN, col_w=half)
+    rep.label_value("Caminho:", voc["Caminho da Vida"], x=MARGIN, col_w=half)
+    y_after_left = rep.y
+    rep.y = y_start
     for pos in ("1º", "2º", "3º", "4º"):
-        pdf.set_x(MARGIN + col_w)
-        pdf.label_value_row(f"{pos}:", des[pos], col_w)
-    pdf.set_y(max(y_after_voc, pdf.get_y()))
+        rep.label_value(f"{pos}:", des[pos], x=MARGIN + half, col_w=half)
+    rep.y = max(rep.y, y_after_left) + 6
 
     # ---- Tabela numérica ----
-    pdf.section_title("Tabela Numerica do Nome")
-    _tabela_numerica(pdf, r["TabelaRows"], r["TotalLetras"], r["TotalNome"])
+    rep.section_title("Tabela Numerica do Nome")
+    col_w = CONTENT_W / 3
+    rows = [[n, qtd, soma] for n, qtd, soma in r["TabelaRows"]]
+    rows.append(["TOTAL", r["TotalLetras"], r["TotalNome"]])
+    rep.table(["Numero", "Qtd", "Somatorio"], rows, [col_w, col_w, col_w], highlight_last=True)
 
     # ---- Temperamentos ----
-    pdf.section_title("Temperamentos")
+    rep.section_title("Temperamentos")
     e = r["Eixos"]
     for k, v in e.items():
-        pdf.label_value_row(f"{k.replace('Eixo ', '')}:", v)
+        rep.label_value(f"{k.replace('Eixo ', '')}:", v)
 
     # ---- Ausentes / Excessos ----
-    pdf.section_title("Ausentes, Excessos e Totais")
+    rep.section_title("Ausentes, Excessos e Totais")
     aus = ", ".join(map(str, r["Ausentes"])) if r["Ausentes"] else "Nenhum"
     exc = ", ".join(map(str, r["Excessos"])) if r["Excessos"] else "Nenhum"
-    pdf.label_value_row("Ausentes:", aus)
-    pdf.label_value_row(f"Excessos (>={LIMIAR_EXCESSO}):", exc)
-    pdf.label_value_row("Total nome:", r["TotalNome"])
-    pdf.label_value_row("Total letras:", r["TotalLetras"])
+    rep.label_value("Ausentes:", aus)
+    rep.label_value(f"Excessos (>={LIMIAR_EXCESSO}):", exc)
+    rep.label_value("Total nome:", r["TotalNome"])
+    rep.label_value("Total letras:", r["TotalLetras"])
 
-    # ---- Análise Interpretativa (pode ocupar mais de uma página) ----
-    pdf.add_page()
-    pdf.set_font("Helvetica", "B", 14)
-    pdf.set_text_color(*NAVY)
-    pdf.cell(0, 8, _safe("Analise Interpretativa"))
-    pdf.ln(8)
-    pdf.set_font("Helvetica", "I", 8)
-    pdf.set_text_color(*GRAY_TEXT)
-    pdf.multi_cell(
-        0, 4.5,
-        _safe("Leitura simbolica baseada na tradicao numerologica, pensada como "
-              "ferramenta de autorreflexao - nao como diagnostico, previsao ou "
-              "afirmacao factual."),
-    )
-    pdf.ln(2)
+    # ---- Análise Interpretativa ----
+    rep.force_new_page()
+    d = rep.doc
+    d.text(MARGIN, rep.y, "Analise Interpretativa", font="HB", size=15, rgb=NAVY)
+    rep.y += 22
+    rep.y = d.multi_text(
+        MARGIN, rep.y,
+        "Leitura simbolica baseada na tradicao numerologica, pensada como "
+        "ferramenta de autorreflexao - nao como diagnostico, previsao ou "
+        "afirmacao factual.",
+        font="HO", size=8, rgb=GRAY_TEXT, max_width=CONTENT_W, leading=10.5,
+    ) + 8
 
     for titulo_secao, paragrafos in analise_completa(nome, r):
-        pdf.set_font("Helvetica", "B", 10.5)
-        pdf.set_text_color(*NAVY)
-        pdf.cell(0, 7, _safe(titulo_secao))
-        pdf.ln(7)
+        rep.ensure_space(30)
+        d.text(MARGIN, rep.y, titulo_secao, font="HB", size=10.5, rgb=NAVY)
+        rep.y += 16
         for p in paragrafos:
-            # remove tags <b>/</b> usadas na versão reportlab (fpdf2 core
-            # fonts não interpretam HTML); mantém só o texto.
             texto_limpo = p.replace("<b>", "").replace("</b>", "")
-            pdf.paragraph(texto_limpo)
+            rep.ensure_space(20)
+            rep.paragraph(texto_limpo)
 
-    pdf.output(caminho)
+    rep.output(caminho)
     return caminho

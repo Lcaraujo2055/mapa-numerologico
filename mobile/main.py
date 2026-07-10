@@ -24,7 +24,6 @@ from kivy.uix.popup import Popup
 from kivy.uix.button import Button
 from kivy.clock import Clock
 from kivy.factory import Factory
-from kivy.utils import platform
 
 from core import mapa_completo, LIMIAR_EXCESSO
 from pdf_report import gerar_pdf
@@ -257,30 +256,13 @@ class NumerologiaApp(App):
             show_popup("Erro ao gerar PDF", str(e))
             return
 
-        compartilhado = self._tentar_compartilhar(caminho_pdf)
+        compartilhado = False  # compartilhamento nativo fica para uma próxima versão
         if not compartilhado:
             show_popup(
                 "PDF gerado",
                 f"PDF salvo em:\n{caminho_pdf}\n\n"
                 "Use um gerenciador de arquivos do aparelho para abrir ou mover.",
             )
-
-    def _tentar_compartilhar(self, caminho_pdf):
-        """Tenta abrir a folha nativa de compartilhamento do Android via plyer.
-        Retorna True se conseguiu chamar o compartilhamento, False caso contr\u00e1rio
-        (nesse caso o chamador mostra o caminho do arquivo como alternativa)."""
-        if platform != "android":
-            return False
-        try:
-            from plyer import share
-            share.share(
-                title="Mapa Numerol\u00f3gico",
-                text="Meu mapa numerol\u00f3gico em PDF",
-                filepath=caminho_pdf,
-            )
-            return True
-        except Exception:
-            return False
 
     def on_limpar(self):
         ids = self.root_widget.ids

@@ -31,7 +31,7 @@ jobs:
 
       - name: Instalar Buildozer
         run: |
-          pip3 install --user buildozer cython==0.29.33
+          pip3 install --user buildozer==1.5.0 cython==0.29.33
 
       - name: Rodar Buildozer (gera o APK)
         working-directory: mobile

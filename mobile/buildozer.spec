@@ -9,17 +9,16 @@ source.include_exts = py,kv,png,jpg,jpeg,ttf,atlas
 
 version = 1.0
 
-# fpdf2: geração do PDF (Python puro, sem código C — evita o problema da
-# receita travada do reportlab no python-for-android). fpdf2 depende do
-# Pillow (que TEM código C) — por isso "pillow" precisa estar explícito
-# aqui, para o Buildozer compilá-lo com a receita própria dele em vez de
-# tentar (e falhar) baixar um wheel pronto para Android via pip.
-# plyer: compartilhar o PDF pelo Android (Share sheet).
+# O PDF agora é gerado por um módulo próprio, sem nenhuma dependência
+# externa (mobile/simplepdf.py) — por isso não há mais reportlab/fpdf2/
+# pillow aqui. plyer também foi removido (usava o mesmo mecanismo frágil
+# de instalação "sem receita" via pip que causava builds instáveis); o
+# compartilhamento nativo fica para uma versão futura.
 # python3 e hostpython3 travados em 3.10.12 (precisam ser IGUAIS): essa é a
-# combinação mais testada pela comunidade Kivy/Buildozer para Android;
-# 3.11+ tem apresentado um bug conhecido de "pip" corrompido durante o build.
-# Cython travado numa versão compatível conhecida.
-requirements = python3==3.10.12,hostpython3==3.10.12,kivy==2.2.1,pillow,fpdf2,plyer,Cython==0.29.33
+# combinação mais testada pela comunidade Kivy/Buildozer para Android.
+# Cython travado numa versão compatível conhecida (necessário para compilar
+# o próprio Kivy).
+requirements = python3==3.10.12,hostpython3==3.10.12,kivy==2.2.1,Cython==0.29.33
 
 orientation = portrait
 fullscreen = 0
