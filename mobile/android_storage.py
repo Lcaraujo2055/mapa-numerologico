@@ -46,17 +46,21 @@ def _save_scoped_storage(activity, data, filename):
     """Android 10+ (API 29+): MediaStore, sem precisar de permissão."""
     from jnius import autoclass
 
-    MediaStore = autoclass("android.provider.MediaStore")
+    # Classes aninhadas do Java precisam de autoclass() próprio (com $),
+    # não dá para encadear como atributo Python (ex.: MediaStore.Downloads
+    # não funciona; precisa de autoclass('...MediaStore$Downloads')).
+    MediaColumns = autoclass("android.provider.MediaStore$MediaColumns")
+    Downloads = autoclass("android.provider.MediaStore$Downloads")
     ContentValues = autoclass("android.content.ContentValues")
     Environment = autoclass("android.os.Environment")
 
     resolver = activity.getContentResolver()
     values = ContentValues()
-    values.put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
-    values.put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
-    values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+    values.put(MediaColumns.DISPLAY_NAME, filename)
+    values.put(MediaColumns.MIME_TYPE, "application/pdf")
+    values.put(MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
 
-    uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+    uri = resolver.insert(Downloads.EXTERNAL_CONTENT_URI, values)
     if uri is None:
         return None
 
