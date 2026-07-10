@@ -12,10 +12,11 @@ version = 1.0
 # fpdf2: geração do PDF (Python puro, sem código C — evita o problema da
 # receita travada do reportlab no python-for-android). plyer: compartilhar
 # o PDF pelo Android (Share sheet).
-# python3 e hostpython3 travados em 3.11.6 (precisam ser IGUAIS): versões
-# mais novas (3.13/3.14) ainda não são suportadas por todas as dependências
-# do Kivy no Android.
-requirements = python3==3.11.6,hostpython3==3.11.6,kivy==2.2.1,fpdf2,plyer
+# python3 e hostpython3 travados em 3.10.12 (precisam ser IGUAIS): essa é a
+# combinação mais testada pela comunidade Kivy/Buildozer para Android;
+# 3.11+ tem apresentado um bug conhecido de "pip" corrompido durante o build.
+# Cython travado numa versão compatível conhecida.
+requirements = python3==3.10.12,hostpython3==3.10.12,kivy==2.2.1,fpdf2,plyer,Cython==0.29.33
 
 orientation = portrait
 fullscreen = 0
