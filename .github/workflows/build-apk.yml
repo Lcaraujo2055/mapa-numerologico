@@ -48,6 +48,7 @@ jobs:
         working-directory: mobile
         run: |
           export PATH="$HOME/.local/bin:$PATH"
+          export JAVA_HOME="$JAVA_HOME_17_X64"
           yes | buildozer -v android debug
 
       - name: Publicar o APK gerado
