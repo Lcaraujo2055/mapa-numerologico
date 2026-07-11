@@ -36,10 +36,11 @@ BOTTOM_LIMIT = PAGE_H - 55
 
 
 class MobileReport:
-    def __init__(self, nome, data):
+    def __init__(self, nome, data, alma=""):
         self.doc = PDFDoc()
         self.nome = nome
         self.data = data
+        self.alma = alma
         self.page_num = 0
         self.y = 0
         self._new_page()
@@ -60,8 +61,9 @@ class MobileReport:
 
         box_w = 230
         x_right = PAGE_W - MARGIN - box_w
-        d.text(x_right, 13, self.nome, font="HB", size=11, rgb=WHITE, align="R", max_width=box_w)
-        d.text(x_right, 32, f"Nascimento: {self.data}", font="H", size=9.5, rgb=(216, 222, 234), align="R", max_width=box_w)
+        d.text(x_right, 10, self.nome, font="HB", size=11, rgb=WHITE, align="R", max_width=box_w)
+        d.text(x_right, 24, self.alma, font="HB", size=9, rgb=GOLD, align="R", max_width=box_w)
+        d.text(x_right, 38, f"Nascimento: {self.data}", font="H", size=9.5, rgb=(216, 222, 234), align="R", max_width=box_w)
 
         footer_y = PAGE_H - 40
         d.line(MARGIN, footer_y, PAGE_W - MARGIN, footer_y, rgb=LINE_GRAY, line_width=0.7)
@@ -154,7 +156,7 @@ def gerar_pdf(nome: str, data: str, r: dict, pasta_destino: str) -> str:
     agora = datetime.now().strftime("%Y%m%d_%H%M%S")
     caminho = os.path.join(pasta_destino, f"Mapa_Numerologico_{safe_nome}_{agora}.pdf")
 
-    rep = MobileReport(nome, data)
+    rep = MobileReport(nome, data, alma=r.get("Alma", ""))
 
     # ---- Números fundamentais ----
     itens = [

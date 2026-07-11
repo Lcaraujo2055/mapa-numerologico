@@ -24,6 +24,7 @@ TABELA = {
 VOGAIS = {'A', 'E', 'I', 'O', 'U'}
 MESTRES = {11, 22, 33}
 LIMIAR_EXCESSO = 4
+LIMIAR_ALMA_VELHA = 100  # somatório bruto (vogais+consoantes) acima disso = Alma Velha
 
 
 # ------------------------------------------------------------- Núcleo -----
@@ -76,6 +77,12 @@ def calcular_interior_exterior(nome: str):
                 exterior += TABELA[l]
     soma_nome = interior + exterior
     return reduzir(interior, True), reduzir(exterior, True), soma_nome
+
+
+def classificar_alma(total_nome: int) -> str:
+    """Alma Velha se o somatório bruto (vogais+consoantes, sem reduzir) do
+    nome for maior que LIMIAR_ALMA_VELHA; Alma Nova caso contrário."""
+    return "Alma Velha" if total_nome > LIMIAR_ALMA_VELHA else "Alma Nova"
 
 
 def caminho_vida(data: str):
@@ -175,4 +182,5 @@ def mapa_completo(nome: str, data: str):
         "TotalLetras": total_letras,
         "Ausentes": ausentes,
         "Excessos": excessos,
+        "Alma": classificar_alma(total_nome),
     }
